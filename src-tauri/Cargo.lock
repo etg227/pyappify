@@ -1801,6 +1801,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "hub-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "git2",
+ "serde",
+ "serde_json",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "http"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3273,6 +3284,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "git2",
+ "hub-core",
  "lazy_static",
  "once_cell",
  "rand 0.10.1",

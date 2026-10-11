@@ -1,0 +1,52 @@
+:root {font-family: "Segoe UI", "Microsoft YaHei", sans-serif; color: #192434; background: #f4f6f8; font-synthesis: none; text-rendering: optimizeLegibility;}
+* {box-sizing: border-box;}
+body {margin: 0;}
+button, input {font: inherit;}
+button {border: 1px solid #d7dfe7; background: #fff; color: #253950; border-radius: 9px; padding: 9px 14px; cursor: pointer;}
+button:hover:not(:disabled) {background: #edf3f8;}
+button.primary {background: #195ed1; border-color: #195ed1; color: white;}
+button.primary:hover:not(:disabled) {background: #124daf;}
+button:disabled {opacity: .48; cursor: default;}
+button:focus-visible, input:focus-visible, summary:focus-visible {outline: 3px solid #8db6ff; outline-offset: 3px;}
+.hub-shell {min-height: 100vh; display: grid; grid-template-columns: 230px 1fr;}
+.hub-sidebar {background: #152538; color: #e1e9f1; padding: 32px 20px 22px; display: flex; flex-direction: column;}
+.hub-brand {display: flex; align-items: center; gap: 12px; font-size: 21px; font-weight: 650; margin-bottom: 42px;}
+.hub-brand > span {background: #3373df; border-radius: 12px; padding: 9px 12px;}
+.hub-brand small {display: block; margin-top: 7px; font-size: 10px; color: #9bb0c8; letter-spacing: 1.5px;}
+nav {display: grid; gap: 8px;}
+nav button {background: transparent; color: #c4d2e2; border: none; text-align: left; padding: 13px; display: flex; justify-content: space-between;}
+nav button.selected, nav button:hover:not(:disabled) {background: #263f5b; color: white;}
+.sidebar-bottom {margin-top: auto; padding-top: 40px; font-size: 12px; color: #9bb0c8;}
+.sidebar-bottom button {background: transparent; color: #c4d2e2; border-color: #41556f; width: 100%;}
+.hub-main {padding: 46px 48px; min-width: 0;}
+header {display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; margin-bottom: 26px;}
+.eyebrow {font-size: 12px; letter-spacing: 1px; color: #195ed1; margin: 0 0 12px;}
+h1 {font-size: 30px; letter-spacing: -.7px; margin: 0;}
+header p:not(.eyebrow) {color: #657588; font-size: 14px; line-height: 1.7;}
+.running-summary {font-size: 12px; white-space: nowrap; padding: 9px 13px; background: #fff; border: 1px solid #e1e7ef; border-radius: 30px; margin-top: 6px;}
+.preview-note {background: #edf3fc; color: #476381; border: 1px solid #dbe7f6; padding: 13px 16px; border-radius: 10px; font-size: 12px; line-height: 1.8; margin-bottom: 24px;}
+.search-label {display: block; font-size: 12px; color: #657588; max-width: 420px; margin-bottom: 24px;}
+input {display: block; width: 100%; margin-top: 7px; border: 1px solid #d6dfe9; border-radius: 9px; padding: 11px 13px; color: #192434; background: white;}
+.tool-grid {display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 20px;}
+.tool-card {background: #fff; border: 1px solid #dfe6ed; border-radius: 16px; padding: 24px;}
+.tool-card-heading {display: flex; align-items: center; gap: 12px;}
+.tool-mark {display: grid; place-items: center; width: 46px; height: 46px; background: #e8f0ff; color: #195ed1; border-radius: 13px; font-size: 24px; font-weight: 700;}
+h2 {margin: 0 0 5px; font-size: 19px;}
+.tool-platform {font-size: 11px; color: #68788b;}
+.status {margin-left: auto; font-size: 11px; color: #657588; background: #f1f4f7; padding: 6px 9px; border-radius: 20px; white-space: nowrap;}
+.status.running {background: #e5f6ee; color: #167b50;}
+.tool-description {font-size: 14px; line-height: 1.8; color: #52657b; min-height: 50px; margin: 22px 0 14px;}
+.tool-version {color: #68788b; font-size: 12px; display: flex; gap: 14px; align-items: center;}
+.update-dot {color: #195ed1; font-weight: 600;}
+.tool-actions {display: flex; gap: 9px; flex-wrap: wrap; margin-top: 22px;}
+.tool-actions button {font-size: 12px;}
+.tool-note, .dialog-note {font-size: 12px; line-height: 1.8; color: #6b7889;}
+.tool-error, .global-error {background: #fff3f1; border: 1px solid #f3c9c4; padding: 12px; border-radius: 9px; color: #a44036; font-size: 12px; line-height: 1.8; margin-top: 16px; overflow-wrap: anywhere;}
+.global-error {margin: 0 0 20px;}
+summary {cursor: pointer;}
+.empty-state {color: #68788b; padding: 35px 0;}
+.commit-list {padding-left: 20px; font-size: 13px; line-height: 1.9; overflow-wrap: anywhere; max-height: 220px; overflow: auto;}
+.python-label {font-size: 13px; display: block; margin-top: 18px;}
+.log-content {white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.7; max-height: 60vh; margin: 0;}
+@media (max-width: 800px) {.hub-shell {grid-template-columns: 180px 1fr;} .hub-sidebar {padding: 24px 14px;} .hub-main {padding: 30px 22px;} header {flex-direction: column; gap: 0;} .hub-brand {font-size: 17px;} }
+@media (max-width: 560px) {.hub-shell {display: block;} .hub-sidebar {padding: 16px;} .hub-brand {margin-bottom: 14px;} nav {grid-template-columns: 1fr 1fr;} .sidebar-bottom {padding-top: 12px;} .sidebar-bottom p {display: none;} .hub-main {padding: 24px 16px;} }

@@ -1,0 +1,49 @@
+name: Tool Hub Preview
+
+on:
+  push:
+    branches: ["feat/multi-project-hub"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hub-preview-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  windows-preview:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/hub-core -> target
+            src-tauri -> target
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "11"
+      - run: pnpm install --frozen-lockfile
+      - name: Build frontend
+        run: pnpm build
+      - name: Test isolated projects and commit deployments
+        run: cargo test --manifest-path crates/hub-core/Cargo.toml --locked
+      - name: Test desktop adapter and retained upstream behavior
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked --lib
+      - name: Build Windows preview executable
+        run: pnpm tauri build --no-bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tool-hub-windows-preview
+          path: src-tauri/target/release/pyappify.exe
+          if-no-files-found: error

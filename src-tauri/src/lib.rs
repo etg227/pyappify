@@ -5,6 +5,7 @@ mod config_manager;
 mod emitter;
 mod execute_python;
 mod git;
+mod hub;
 mod python_env;
 mod runas;
 mod submodule;
@@ -668,6 +669,7 @@ pub async fn run() {
             .plugin(tauri_plugin_opener::init())
             .plugin(tauri_plugin_notification::init())
             .setup(move |app| {
+                hub::initialize(app.handle())?;
                 window::create_system_tray(app).unwrap();
                 let app_handle = app.handle();
                 emitter::init_app_handle(app_handle.clone());
@@ -682,6 +684,15 @@ pub async fn run() {
                 Ok(())
             })
             .invoke_handler(tauri::generate_handler![
+                hub::hub_list,
+                hub::hub_check_update,
+                hub::hub_install,
+                hub::hub_start,
+                hub::hub_show,
+                hub::hub_stop,
+                hub::hub_restore,
+                hub::hub_read_log,
+                hub::hub_shutdown,
                 show_main_window,
                 start_app,
                 stop_app,

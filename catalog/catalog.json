@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "tools": [
+    {
+      "id": "fly",
+      "title": "FLY",
+      "description": "为选定的游戏和服务配置加速与分流，其他连接保持直连。",
+      "repository": "https://github.com/etg227/FLY.git",
+      "branch": "feat/tool-hub-runtime",
+      "platforms": ["windows"],
+      "channel": "preview"
+    }
+  ]
+}
