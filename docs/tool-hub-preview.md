@@ -19,8 +19,9 @@ engine is introduced independently; they are not used for hub applications.
 - Source and Python environments use separate immutable deployment directories.
   The environment is created at its final location, never renamed after creation.
 - Persistent data is outside deployments. Dependency preparation failures retain
-  the current deployment; failure to become ready after process exit restores the
-  previous deployment when available. Manual restore swaps source and environment.
+  the current deployment. If a new version exits before becoming ready, the
+  previous version is restored only when that version has become ready before.
+  Manual restore swaps source and environment.
 - Stop uses an application lifecycle protocol, waits for cleanup, and does not
   indiscriminately kill Python processes. Updating a running tool is rejected.
 - Closing the main window hides it; explicit exit stops managed tools first.
@@ -38,11 +39,20 @@ isolated venv and checks it again. FLY itself uses the standard library. Tools
 with third-party dependencies can declare a requirements file, installed with
 `--require-hashes`; generating those lock files belongs to each tool repository.
 
-The engine automatically restores an earlier deployment only when a candidate
-process exits before readiness. A hung process remains tracked, with an explicit
-error, rather than being force-killed. After a manager restart, a matching session
-can receive stop/show commands; an ambiguous or stale session blocks installation
-until investigated. Full crash recovery and a safe repair UI remain follow-up work.
+The engine automatically restores an earlier deployment only when a version that
+has never become ready exits before readiness and the previous version has become
+ready before. A version that has run once is never replaced because of a later
+failed start, and two unproven versions are never swapped back and forth. Exit
+code 75 means the tool cannot start right now for an environmental reason, such
+as another running copy; no deployment is changed.
+
+A hung process remains tracked, with an explicit error, rather than being
+force-killed. After a manager restart, a live session can receive stop/show
+commands. The session records process IDs together with process creation times;
+when every recorded process provably no longer exists, for example after a crash
+or reboot, the stale session is discarded. A session whose processes cannot be
+checked still blocks installation until investigated. Full crash recovery and a
+safe repair UI remain follow-up work.
 
 There is no automatic cleanup of old deployments in this preview, and startup logs
 are append-only. The log viewer reads at most the last 64 KiB. User data migrations
@@ -108,7 +118,8 @@ platforms and channel=preview. The selected source commit must contain:
 ```
 
 The script accepts `--data-dir` and `--hub-session`. See FLY's integration document
-for the readiness and stop/show file protocol. Runtime state belongs in the given
+for the readiness and stop/show file protocol. Exit with status 75 when the tool
+cannot start for an environmental reason, such as another copy already running. Runtime state belongs in the given
 data directory, not the source directory. Display-name changes must not change ID.
 
 ## Next milestones

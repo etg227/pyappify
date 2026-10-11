@@ -328,6 +328,10 @@ fn failed_candidate_start_restores_the_previous_deployment() {
     let first = hub
         .install("one", &initial.target_commit, &python())
         .unwrap();
+    // Only a version that has actually run is an automatic restore target.
+    hub.start("one").unwrap();
+    hub.stop("one").unwrap();
+    assert!(state(&root, "one").current.unwrap().verified);
     fs::write(
         repo.workdir().unwrap().join("main.py"),
         "raise RuntimeError('failed candidate')\n",
@@ -335,11 +339,194 @@ fn failed_candidate_start_restores_the_previous_deployment() {
     .unwrap();
     commit(&repo, "Broken candidate");
     let update = hub.check_update("one").unwrap();
-    hub.install("one", &update.target_commit, &python())
+    let broken = hub
+        .install("one", &update.target_commit, &python())
         .unwrap();
     assert!(hub.start("one").is_err());
     assert_eq!(state(&root, "one").current.unwrap().id, first.id);
     assert!(hub.read_log("one").unwrap().contains("failed candidate"));
+    // The restored version runs again and stays current.
+    hub.start("one").unwrap();
+    hub.stop("one").unwrap();
+    let restored = state(&root, "one");
+    assert_eq!(restored.current.unwrap().id, first.id);
+    assert_eq!(restored.previous.unwrap().id, broken.id);
+}
+
+/// Exits early with 75 while `other-instance` exists and with 1 while `crash`
+/// exists in the data directory, otherwise behaves like the normal test tool.
+fn guard_startup(repo: &Repository) {
+    let main = repo.workdir().unwrap().join("main.py");
+    let body = fs::read_to_string(&main).unwrap();
+    let guarded = body.replacen(
+        "data = Path(args.data_dir)\n",
+        "data = Path(args.data_dir)\nimport sys\n\
+if (data / 'other-instance').exists(): sys.exit(75)\n\
+if (data / 'crash').exists(): sys.exit(1)\n",
+        1,
+    );
+    assert_ne!(body, guarded);
+    fs::write(&main, guarded).unwrap();
+}
+
+#[test]
+fn failed_starts_of_a_working_version_never_swap_deployments() {
+    let temp = TempDir::new().unwrap();
+    let (tool, repo) = repository(temp.path(), "one");
+    guard_startup(&repo);
+    commit(&repo, "Guarded tool");
+    let root = temp.path().join("hub");
+    let hub = Hub::new(
+        &root,
+        Catalog {
+            schema: 1,
+            tools: vec![tool],
+        },
+    )
+    .unwrap();
+    let first = hub.check_update("one").unwrap();
+    hub.install("one", &first.target_commit, &python()).unwrap();
+    hub.start("one").unwrap();
+    hub.stop("one").unwrap();
+    fs::write(repo.workdir().unwrap().join("feature.txt"), "new").unwrap();
+    commit(&repo, "Healthy update");
+    let second = hub.check_update("one").unwrap();
+    let healthy = hub
+        .install("one", &second.target_commit, &python())
+        .unwrap();
+    let data = root.join("apps/one/data");
+
+    // Another copy is running: the candidate is not at fault and is kept.
+    fs::write(data.join("other-instance"), "").unwrap();
+    let error = format!("{:#}", hub.start("one").unwrap_err());
+    assert!(error.contains("cannot start right now"), "{error}");
+    assert_eq!(state(&root, "one").current.unwrap().id, healthy.id);
+    fs::remove_file(data.join("other-instance")).unwrap();
+
+    hub.start("one").unwrap();
+    hub.stop("one").unwrap();
+    assert!(state(&root, "one").current.unwrap().verified);
+
+    // Repeated failures of a version that has run before change nothing.
+    fs::write(data.join("crash"), "").unwrap();
+    for _ in 0..3 {
+        let error = format!("{:#}", hub.start("one").unwrap_err());
+        assert!(error.contains("No deployment was changed"), "{error}");
+        assert_eq!(state(&root, "one").current.unwrap().id, healthy.id);
+    }
+}
+
+#[test]
+fn a_failing_candidate_is_not_swapped_with_a_version_that_never_ran() {
+    let temp = TempDir::new().unwrap();
+    let (tool, repo) = repository(temp.path(), "one");
+    let root = temp.path().join("hub");
+    let hub = Hub::new(
+        &root,
+        Catalog {
+            schema: 1,
+            tools: vec![tool],
+        },
+    )
+    .unwrap();
+    let first = hub.check_update("one").unwrap();
+    hub.install("one", &first.target_commit, &python()).unwrap();
+    fs::write(
+        repo.workdir().unwrap().join("main.py"),
+        "raise SystemExit(3)\n",
+    )
+    .unwrap();
+    commit(&repo, "Broken candidate");
+    let second = hub.check_update("one").unwrap();
+    let broken = hub
+        .install("one", &second.target_commit, &python())
+        .unwrap();
+    for _ in 0..2 {
+        assert!(hub.start("one").is_err());
+        assert_eq!(state(&root, "one").current.unwrap().id, broken.id);
+    }
+}
+
+fn kill_tree(pid: u64) {
+    let status = if cfg!(windows) {
+        Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .status()
+    } else {
+        Command::new("kill").args(["-9", &pid.to_string()]).status()
+    };
+    assert!(status.unwrap().success());
+}
+
+fn active_session(root: &Path) -> serde_json::Value {
+    serde_json::from_slice(&fs::read(root.join("apps/one/active-session.json")).unwrap()).unwrap()
+}
+
+#[test]
+fn restarted_manager_keeps_live_sessions_and_discards_dead_ones() {
+    let temp = TempDir::new().unwrap();
+    let (tool, _) = repository(temp.path(), "one");
+    let root = temp.path().join("hub");
+    let catalog = Catalog {
+        schema: 1,
+        tools: vec![tool],
+    };
+    let hub = Hub::new(&root, catalog.clone()).unwrap();
+    let target = hub.check_update("one").unwrap();
+    hub.install("one", &target.target_commit, &python())
+        .unwrap();
+
+    // The manager exits without stopping a live tool: it is still running and
+    // still stops through its lifecycle protocol.
+    hub.start("one").unwrap();
+    std::mem::forget(hub);
+    let mut hub = Hub::new(&root, catalog.clone()).unwrap();
+    assert!(hub.list().unwrap()[0].running);
+    hub.stop("one").unwrap();
+    assert!(!hub.list().unwrap()[0].running);
+    assert_eq!(
+        fs::read_to_string(root.join("apps/one/data/cleaned-up")).unwrap(),
+        "graceful"
+    );
+
+    // The tool dies while the manager is down (crash, power loss) and cannot
+    // clean up. Records written before creation times were stored are covered too.
+    for legacy_record in [false, true] {
+        hub.start("one").unwrap();
+        let session = active_session(&root);
+        let ready = root
+            .join("apps/one/data/runtime/hub")
+            .join(session["session"].as_str().unwrap())
+            .join("ready.json");
+        assert!(ready.exists());
+        std::mem::forget(hub);
+        kill_tree(session["pid"].as_u64().unwrap());
+        if legacy_record {
+            let mut stripped = session.clone();
+            stripped.as_object_mut().unwrap().remove("started");
+            stripped.as_object_mut().unwrap().remove("protocol_started");
+            fs::write(
+                root.join("apps/one/active-session.json"),
+                serde_json::to_vec(&stripped).unwrap(),
+            )
+            .unwrap();
+        }
+        // Termination is asynchronous; give the OS a moment to finish it.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        hub = loop {
+            let restarted = Hub::new(&root, catalog.clone()).unwrap();
+            if !restarted.list().unwrap()[0].running || std::time::Instant::now() > deadline {
+                break restarted;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        };
+        assert!(!hub.list().unwrap()[0].running);
+        assert!(!root.join("apps/one/active-session.json").exists());
+        assert!(!ready.exists());
+        // Normal operation resumes: a fresh session starts and stops.
+        hub.start("one").unwrap();
+        hub.stop("one").unwrap();
+    }
 }
 
 #[test]

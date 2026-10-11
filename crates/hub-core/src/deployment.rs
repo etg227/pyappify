@@ -36,6 +36,10 @@ pub struct Deployment {
     pub id: String,
     pub commit: String,
     pub manifest: ToolManifest,
+    /// Set once this deployment has reached readiness. Only a verified deployment
+    /// is a safe automatic restore target.
+    #[serde(default)]
+    pub verified: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -197,6 +201,7 @@ pub(crate) fn install(
             id: id.clone(),
             commit: oid.to_string(),
             manifest,
+            verified: false,
         };
         storage::atomic_json(&deployment_dir.join("deployment.json"), &deployment)?;
         let previous_state = load_state(app)?;
@@ -214,6 +219,26 @@ pub(crate) fn install(
         let _ = fs::remove_dir_all(&deployment_dir);
     }
     result
+}
+
+/// Automatic restore is limited to an unverified candidate replacing a deployment
+/// that has already run. Anything else would swap versions on every failed start.
+pub(crate) fn should_restore_previous(state: &InstallState) -> bool {
+    matches!(
+        (&state.current, &state.previous),
+        (Some(current), Some(previous)) if !current.verified && previous.verified
+    )
+}
+
+pub(crate) fn mark_verified(app: &Application, deployment_id: &str) -> Result<()> {
+    let mut state = load_state(app)?;
+    match state.current.as_mut() {
+        Some(current) if current.id == deployment_id && !current.verified => {
+            current.verified = true;
+            storage::atomic_json(&app.directory.join("current.json"), &state)
+        }
+        _ => Ok(()),
+    }
 }
 
 pub(crate) fn rollback(app: &Application) -> Result<()> {
