@@ -13,6 +13,9 @@ engine is introduced independently; they are not used for hub applications.
 - Corrupted state in one tool is reported on that card without hiding other tools.
 - Branch-based update checks resolve and display a full commit SHA. Installation
   uses the checked SHA, even if the remote branch changes before confirmation.
+- Installed tools are checked in the background once per installed revision in
+  each desktop session. An available update appears on its card; nothing is
+  installed automatically and network failure does not block launching a tool.
 - Source and Python environments use separate immutable deployment directories.
   The environment is created at its final location, never renamed after creation.
 - Persistent data is outside deployments. Dependency preparation failures retain

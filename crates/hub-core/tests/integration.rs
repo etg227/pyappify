@@ -194,6 +194,14 @@ fn installs_the_prompted_commit_even_when_branch_moves_then_rolls_back_both_sour
         fs::read_to_string(data.join("secret.json")).unwrap(),
         "keep me"
     );
+    // A pending prompt made before restoring a deployment is no longer valid.
+    let stale = hub.check_update("one").unwrap();
+    hub.rollback("one").unwrap();
+    assert!(hub
+        .install("one", &stale.target_commit, &python())
+        .unwrap_err()
+        .to_string()
+        .contains("Installed version changed"));
 }
 
 #[test]
@@ -371,4 +379,70 @@ fn changed_branch_history_requires_explicit_recovery() {
         .unwrap_err()
         .to_string()
         .contains("Branch history changed"));
+}
+
+#[test]
+fn a_stalled_network_check_does_not_block_launching_the_installed_tool() {
+    use std::io::{Read, Write};
+    use std::sync::{mpsc, Arc};
+    use std::time::Duration;
+
+    let temp = TempDir::new().unwrap();
+    let (mut tool, _) = repository(temp.path(), "one");
+    let root = temp.path().join("hub");
+    let initial_hub = Hub::new(
+        &root,
+        Catalog {
+            schema: 1,
+            tools: vec![tool.clone()],
+        },
+    )
+    .unwrap();
+    let initial = initial_hub.check_update("one").unwrap();
+    initial_hub
+        .install("one", &initial.target_commit, &python())
+        .unwrap();
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    tool.repository = format!("http://{}/repository.git", listener.local_addr().unwrap());
+    let cache = Repository::open(root.join("apps/one/repository")).unwrap();
+    cache.remote_set_url("origin", &tool.repository).unwrap();
+    let (connected_tx, connected_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        let mut request = [0; 1024];
+        stream.read(&mut request).unwrap();
+        connected_tx.send(()).unwrap();
+        release_rx.recv_timeout(Duration::from_secs(30)).unwrap();
+        stream
+            .write_all(
+                b"HTTP/1.1 500 Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )
+            .unwrap();
+    });
+    let hub = Arc::new(
+        Hub::new(
+            &root,
+            Catalog {
+                schema: 1,
+                tools: vec![tool],
+            },
+        )
+        .unwrap(),
+    );
+    let checking = hub.clone();
+    let check = std::thread::spawn(move || checking.check_update("one"));
+    connected_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    // The network request is still awaiting a response throughout startup.
+    let started = hub.start("one");
+    release_tx.send(()).unwrap();
+    server.join().unwrap();
+    assert!(check.join().unwrap().is_err());
+    started.unwrap();
+    assert!(hub.list().unwrap()[0].running);
+    hub.shutdown().unwrap();
 }

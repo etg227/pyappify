@@ -23,6 +23,7 @@ export default function HubApp() {
   const [choice, setChoice] = useState<InstallChoice | null>(null);
   const [log, setLog] = useState<{title: string; text: string} | null>(null);
   const inFlight = useRef(new Set<string>());
+  const autoChecked = useRef(new Set<string>());
 
   const reload = useCallback(async () => {
     const data = await invoke<ApplicationView[]>('hub_list');
@@ -34,7 +35,17 @@ export default function HubApp() {
     const refresh = async () => {
       try {
         const data = await invoke<ApplicationView[]>('hub_list');
-        if (!disposed) {setApps(data); setLoadError('');}
+        if (!disposed) {
+          setApps(data); setLoadError('');
+          for (const app of data) {
+            const key = `${app.tool.id}:${app.installed_commit}`;
+            if (!app.installed_commit || app.state_error || autoChecked.current.has(key)) continue;
+            autoChecked.current.add(key);
+            // Check once per installed revision. Network failure does not block launch
+            // or replace the installed deployment; manual retry remains available.
+            void invoke('hub_check_update', {appId: app.tool.id}).catch(() => {});
+          }
+        }
       } catch (error) {if (!disposed) setLoadError(String(error));}
       finally {if (!disposed) setLoading(false);}
     };

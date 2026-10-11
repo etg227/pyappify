@@ -26,6 +26,7 @@ pub(crate) struct Application {
     tool: Tool,
     directory: PathBuf,
     operation: Mutex<()>,
+    repository: Mutex<()>,
     pending: Mutex<Option<UpdatePreview>>,
     process: Mutex<Option<RunningProcess>>,
 }
@@ -61,6 +62,7 @@ impl Hub {
                     directory: root.join("apps").join(&id),
                     tool,
                     operation: Mutex::new(()),
+                    repository: Mutex::new(()),
                     pending: Mutex::new(None),
                     process: Mutex::new(None),
                 });
@@ -109,8 +111,8 @@ impl Hub {
 
     pub fn check_update(&self, id: &str) -> Result<UpdatePreview> {
         let app = self.application(id)?;
-        let _operation = app
-            .operation
+        let _repository = app
+            .repository
             .try_lock()
             .map_err(|_| anyhow!("This tool is busy"))?;
         let preview = repository::check_update(&app)?;
@@ -127,11 +129,18 @@ impl Hub {
         if processes::is_running(&app)? {
             bail!("Stop this tool before installing an update");
         }
+        let _repository = app
+            .repository
+            .try_lock()
+            .map_err(|_| anyhow!("Update check is still in progress"))?;
         let pending = lock(&app.pending)?
             .clone()
             .ok_or_else(|| anyhow!("Check for updates first"))?;
         if pending.target_commit != target {
             bail!("Update target changed; check again before installing");
+        }
+        if deployment::load_state(&app)?.current.map(|d| d.commit) != pending.installed_commit {
+            bail!("Installed version changed; check again before installing");
         }
         let deployment = deployment::install(&app, &pending, python)?;
         *lock(&app.pending)? = None;
