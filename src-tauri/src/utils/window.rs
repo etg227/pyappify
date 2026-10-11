@@ -12,6 +12,18 @@ use tauri_plugin_notification::NotificationExt;
 use tracing::{error, info};
 
 pub fn on_window_event(window: &Window, _event: &WindowEvent) {
+    if let WindowEvent::CloseRequested { api, .. } = _event {
+        if window.label() == "main"
+            && window
+                .app_handle()
+                .try_state::<std::sync::Arc<hub_core::Hub>>()
+                .is_some()
+        {
+            api.prevent_close();
+            let _ = window.hide();
+            return;
+        }
+    }
     if let WindowEvent::Resized(size) = _event {
         if size.width == 0 && size.height == 0 && window.label() == "main" {
             info!("on_window_event {:?}, hide", _event);
@@ -50,8 +62,24 @@ pub fn create_system_tray(app: &App<Wry>) -> anyhow::Result<()> {
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "quit" => {
-                println!("quit menu item was clicked");
-                app.exit(0);
+                if let Some(state) = app.try_state::<std::sync::Arc<hub_core::Hub>>() {
+                    let hub = state.inner().clone();
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        match tauri::async_runtime::spawn_blocking(move || hub.shutdown()).await {
+                            Ok(Ok(())) => app.exit(0),
+                            result => {
+                                let message = format!("Unable to stop running tools: {result:?}");
+                                error!("{message}");
+                                use tauri::Emitter;
+                                let _ = app.emit("hub-error", message);
+                                show_and_focus_main_window(&app);
+                            }
+                        }
+                    });
+                } else {
+                    app.exit(0);
+                }
             }
             _ => {
                 println!("menu item {:?} not handled", event.id);

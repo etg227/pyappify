@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "pyappify",
+  "productName": "Tool Hub Preview",
   "mainBinaryName": "pyappify",
   "version": "0.0.1",
-  "identifier": "pyappify",
+  "identifier": "dev.etg227.toolhub",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
   "app": {
     "windows": [
        {
-        "title": "pyappify",
+        "title": "工具中心 · 开发预览",
         "width": 1100,
         "height": 800,
         "visible": false

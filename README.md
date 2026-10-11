@@ -1,3 +1,12 @@
+# Tool Hub fork · development preview
+
+This fork adds a multi-project catalog, isolated application processes and
+commit-based installation alongside the retained PyAppify implementation.
+See [the preview guide](docs/tool-hub-preview.md) for scope, setup, validation
+and remaining work. FLY's integration branch is the first catalog entry.
+
+---
+
 # PyAppify
 
 A modern Python packaging tool that turns one Python project into a distributable, self-updating application, inspired by `uv`. It solves many common drawbacks found in tools like PyInstaller and Nuitka.
