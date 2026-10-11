@@ -10,6 +10,7 @@ engine is introduced independently; they are not used for hub applications.
 - A catalog containing uninstalled as well as installed tools.
 - Application IDs, operation locks, installation state, logs and processes are
   isolated per tool. Different tools can run at the same time.
+- Corrupted state in one tool is reported on that card without hiding other tools.
 - Branch-based update checks resolve and display a full commit SHA. Installation
   uses the checked SHA, even if the remote branch changes before confirmation.
 - Source and Python environments use separate immutable deployment directories.

@@ -40,6 +40,7 @@ pub struct ApplicationView {
     pub busy: bool,
     pub update: Option<UpdatePreview>,
     pub python_executable: Option<PathBuf>,
+    pub state_error: Option<String>,
 }
 
 pub struct Hub {
@@ -80,16 +81,27 @@ impl Hub {
         self.applications
             .values()
             .map(|app| {
-                let state = deployment::load_state(app)?;
+                let (state, mut state_error) = match deployment::load_state(app) {
+                    Ok(state) => (state, None),
+                    Err(error) => (InstallState::default(), Some(format!("{error:#}"))),
+                };
+                let running = match processes::is_running(app) {
+                    Ok(running) => running,
+                    Err(error) => {
+                        state_error = Some(format!("{error:#}"));
+                        false
+                    }
+                };
                 Ok(ApplicationView {
                     tool: app.tool.clone(),
                     supported: app.tool.platforms.iter().any(|p| p == std::env::consts::OS),
                     installed_commit: state.current.map(|d| d.commit),
                     previous_commit: state.previous.map(|d| d.commit),
-                    running: processes::is_running(app)?,
+                    running,
                     busy: app.operation.try_lock().is_err(),
                     update: lock(&app.pending)?.clone(),
                     python_executable: state.python_executable,
+                    state_error,
                 })
             })
             .collect()

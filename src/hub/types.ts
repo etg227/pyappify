@@ -24,5 +24,6 @@ export interface ApplicationView {
   python_executable: string | null;
   running: boolean;
   busy: boolean;
+  state_error: string | null;
   update: UpdatePreview | null;
 }

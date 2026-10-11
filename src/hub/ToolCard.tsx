@@ -11,7 +11,8 @@ interface Props {
 
 export default function ToolCard({application: app, busy, error, onCheck, onAction, onLog}: Props) {
   const installed = Boolean(app.installed_commit);
-  const state = busy ? '正在处理' : app.running ? '正在运行' : installed ? '已安装' : '未安装';
+  const state = app.state_error ? '需要处理' : busy ? '正在处理' : app.running ? '正在运行' : installed ? '已安装' : '未安装';
+  const disabled = busy || !app.supported || Boolean(app.state_error);
   return (
     <article className="tool-card" aria-busy={busy}>
       <div className="tool-card-heading">
@@ -24,17 +25,17 @@ export default function ToolCard({application: app, busy, error, onCheck, onActi
         {app.update?.available && installed && <span className="update-dot">有更新</span>}
       </div>
       {!app.supported && <p className="tool-note">这个工具暂不支持当前系统。</p>}
-      {error && <div className="tool-error" role="alert"><strong>操作未完成</strong><details><summary>查看原因</summary>{error}</details></div>}
+      {(error || app.state_error) && <div className="tool-error" role="alert"><strong>操作未完成</strong><details><summary>查看原因</summary>{error || app.state_error}</details></div>}
       <div className="tool-actions">
-        {installed && <button className="primary" disabled={busy || !app.supported} onClick={() => onAction(app.running ? 'show' : 'start')}>
+        {installed && <button className="primary" disabled={disabled} onClick={() => onAction(app.running ? 'show' : 'start')}>
           {app.running ? '打开窗口' : '启动'}
         </button>}
-        <button className={installed ? '' : 'primary'} disabled={busy || !app.supported} onClick={onCheck}>
+        <button className={installed ? '' : 'primary'} disabled={disabled} onClick={onCheck}>
           {installed ? '检查更新' : '安装'}
         </button>
-        {app.running && <button disabled={busy} onClick={() => onAction('stop')}>停止</button>}
-        {installed && <button disabled={busy} onClick={onLog}>日志</button>}
-        {app.previous_commit && <button disabled={busy || app.running} onClick={() => onAction('restore')}>恢复上一版</button>}
+        {app.running && <button disabled={busy || Boolean(app.state_error)} onClick={() => onAction('stop')}>停止</button>}
+        {(installed || app.state_error) && <button disabled={busy} onClick={onLog}>日志</button>}
+        {app.previous_commit && <button disabled={disabled || app.running} onClick={() => onAction('restore')}>恢复上一版</button>}
       </div>
     </article>
   );

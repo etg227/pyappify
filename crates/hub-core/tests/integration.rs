@@ -132,6 +132,29 @@ fn catalog_rejects_duplicate_and_traversal_ids() {
 }
 
 #[test]
+fn corrupt_state_in_one_tool_does_not_hide_other_tools() {
+    let temp = TempDir::new().unwrap();
+    let (one, _) = repository(temp.path(), "one");
+    let (two, _) = repository(temp.path(), "two");
+    let root = temp.path().join("hub");
+    let hub = Hub::new(
+        &root,
+        Catalog {
+            schema: 1,
+            tools: vec![one, two],
+        },
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("apps/one")).unwrap();
+    fs::write(root.join("apps/one/current.json"), "broken json").unwrap();
+    let apps = hub.list().unwrap();
+    assert_eq!(apps.len(), 2);
+    assert!(apps[0].state_error.is_some());
+    assert!(apps[1].state_error.is_none());
+    assert!(hub.check_update("two").unwrap().available);
+}
+
+#[test]
 fn installs_the_prompted_commit_even_when_branch_moves_then_rolls_back_both_source_and_environment()
 {
     let temp = TempDir::new().unwrap();
