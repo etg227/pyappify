@@ -15,6 +15,8 @@ pub(crate) struct RunningProcess {
 struct Session {
     session: String,
     pid: u32,
+    #[serde(default)]
+    protocol_pid: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -50,16 +52,60 @@ fn read_session(app: &Application) -> Result<Option<Session>> {
     Ok(Some(session))
 }
 
+fn read_ready(app: &Application, session: &Session) -> Option<Ready> {
+    let record: Ready = storage::read_json(&session_path(app, session).join("ready.json")).ok()?;
+    (record.schema == 1 && record.session == session.session && record.state == "ready")
+        .then_some(record)
+}
+
 fn ready(app: &Application, session: &Session) -> bool {
-    let record: Result<Ready> = storage::read_json(&session_path(app, session).join("ready.json"));
-    record
-        .map(|r| {
-            r.schema == 1
-                && r.session == session.session
-                && r.pid == session.pid
-                && r.state == "ready"
-        })
-        .unwrap_or(false)
+    read_ready(app, session)
+        .is_some_and(|record| record.pid == session.pid || Some(record.pid) == session.protocol_pid)
+}
+
+#[cfg(windows)]
+fn is_owned_descendant(parent: u32, candidate: u32) -> bool {
+    use std::collections::HashMap;
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    // Windows venv's redirector can launch the real interpreter as a child.
+    // Accept its readiness only after verifying ancestry under the live handle
+    // we spawned, never by accepting an arbitrary PID from a readiness file.
+    let mut parents = HashMap::new();
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return false;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        if Process32FirstW(snapshot, &mut entry) != 0 {
+            loop {
+                parents.insert(entry.th32ProcessID, entry.th32ParentProcessID);
+                if Process32NextW(snapshot, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+        CloseHandle(snapshot);
+    }
+    let mut current = candidate;
+    for _ in 0..32 {
+        match parents.get(&current).copied() {
+            Some(ancestor) if ancestor == parent => return true,
+            Some(ancestor) if ancestor != 0 && ancestor != current => current = ancestor,
+            _ => return false,
+        }
+    }
+    false
+}
+
+#[cfg(not(windows))]
+fn is_owned_descendant(_parent: u32, _candidate: u32) -> bool {
+    false
 }
 
 pub(crate) fn is_running(app: &Application) -> Result<bool> {
@@ -86,7 +132,10 @@ pub(crate) fn is_running(app: &Application) -> Result<bool> {
 pub(crate) fn send_command(app: &Application, action: &str) -> Result<()> {
     let session = read_session(app)?.context("Tool is not running")?;
     if let Some(owned) = lock(&app.process)?.as_ref() {
-        if owned.session.session != session.session || owned.session.pid != session.pid {
+        if owned.session.session != session.session
+            || owned.session.pid != session.pid
+            || owned.session.protocol_pid != session.protocol_pid
+        {
             bail!("Session record does not match the owned process");
         }
     }
@@ -129,9 +178,10 @@ pub(crate) fn start(app: &Application) -> Result<()> {
         .stdout(Stdio::from(log.try_clone()?))
         .stderr(Stdio::from(log))
         .spawn()?;
-    let session = Session {
+    let mut session = Session {
         session: session_id,
         pid: child.id(),
+        protocol_pid: None,
     };
     if let Err(error) = storage::atomic_json(&active_path(app), &session) {
         // No readiness/manager record exists yet. Retain the owned handle if
@@ -155,11 +205,19 @@ pub(crate) fn start(app: &Application) -> Result<()> {
             }
             bail!("Application exited before becoming ready; inspect runtime/hub-process.log. Previous deployment was retained.");
         }
-        if ready(app, &session) {
-            return Ok(());
+        if let Some(record) = read_ready(app, &session) {
+            if record.pid == session.pid || is_owned_descendant(session.pid, record.pid) {
+                session.protocol_pid = Some(record.pid);
+                storage::atomic_json(&active_path(app), &session)?;
+                if let Some(owned) = lock(&app.process)?.as_mut() {
+                    owned.session = session.clone();
+                }
+                return Ok(());
+            }
         }
         if Instant::now() >= deadline {
-            bail!("Application did not become ready in time. It remains tracked; inspect its log and close it normally before updating.");
+            let reported = read_ready(app, &session).map(|r| r.pid);
+            bail!("Application did not become ready in time (owned PID {}, reported PID {:?}). It remains tracked; inspect its log and close it normally before updating.", session.pid, reported);
         }
         std::thread::sleep(Duration::from_millis(100));
     }

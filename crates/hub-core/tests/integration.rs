@@ -415,7 +415,11 @@ fn a_stalled_network_check_does_not_block_launching_the_installed_tool() {
             .set_read_timeout(Some(Duration::from_secs(10)))
             .unwrap();
         let mut request = [0; 1024];
-        stream.read(&mut request).unwrap();
+        let received = stream.read(&mut request).unwrap();
+        assert!(
+            received > 0,
+            "Git client closed the connection without a request"
+        );
         connected_tx.send(()).unwrap();
         release_rx.recv_timeout(Duration::from_secs(30)).unwrap();
         stream
